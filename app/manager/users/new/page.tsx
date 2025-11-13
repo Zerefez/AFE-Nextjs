@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { Input } from '@/app/components/Input';
-import { Select } from '@/app/components/Input';
 import { Button } from '@/app/components/Button';
-import { Card, CardHeader, CardTitle, CardContent } from '@/app/components/Card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/Card';
+import { Input, Select } from '@/app/components/Input';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 export default function CreateUserPage() {
   const router = useRouter();
@@ -127,7 +126,6 @@ export default function CreateUserPage() {
                 required
               >
                 <option value="PersonalTrainer">Personal Trainer</option>
-                <option value="Client">Client</option>
               </Select>
 
               {formData.accountType === 'Client' && (

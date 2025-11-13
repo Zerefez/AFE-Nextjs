@@ -4,7 +4,7 @@ import { exercisesService } from '@/lib/services/exercises';
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const token = await getToken();
@@ -13,7 +13,8 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const exerciseId = parseInt(params.id);
+    const { id } = await params;
+    const exerciseId = parseInt(id);
 
     await exercisesService.update(exerciseId, body, token);
 
@@ -29,7 +30,7 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const token = await getToken();
@@ -37,15 +38,24 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const exerciseId = parseInt(params.id);
+    const { id } = await params;
+    const exerciseId = parseInt(id);
+    
+    console.log('Attempting to delete exercise:', exerciseId);
     await exercisesService.delete(exerciseId, token);
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('Delete exercise error:', error);
+    console.error('Error data:', error.data);
+    console.error('Error status:', error.status);
+    
     return NextResponse.json(
-      { error: error.message || 'Failed to delete exercise' },
-      { status: 400 }
+      { 
+        error: error.message || 'Failed to delete exercise',
+        details: error.data || undefined 
+      },
+      { status: error.status || 400 }
     );
   }
 }

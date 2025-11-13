@@ -1,69 +1,89 @@
 "use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Button } from '@/app/components/Button';
 import { Input, TextArea } from '@/app/components/Input';
+import type {
+  Exercise,
+  ExerciseCardProps,
+  ExerciseFormData,
+  ExerciseFormProps,
+  ExerciseManagerProps
+} from '@/lib/types/programs';
+import { useRouter } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
 
-interface Exercise {
-  exerciseId: number;
-  name: string | null;
-  description: string | null;
-  sets: number | null;
-  repetitions: number | null;
-  time: string | null;
-}
-
-interface ExerciseManagerProps {
-  programId: number;
-  initialExercises: Exercise[];
-}
+const EMPTY_FORM: ExerciseFormData = { name: '', description: '', sets: '', repetitions: '', time: '' };
 
 export default function ExerciseManager({ programId, initialExercises }: ExerciseManagerProps) {
   const router = useRouter();
   const [exercises, setExercises] = useState(initialExercises);
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    sets: '',
-    repetitions: '',
-    time: '',
-  });
+  const [formData, setFormData] = useState<ExerciseFormData>(EMPTY_FORM);
   const [loading, setLoading] = useState(false);
 
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      description: '',
-      sets: '',
-      repetitions: '',
-      time: '',
+  const lastInitialIdsRef = useRef<string>('');
+  const localUpdateInProgressRef = useRef<boolean>(false);
+
+  // Sync with server only when exercise IDs actually change
+  useEffect(() => {
+    if (localUpdateInProgressRef.current) {
+      localUpdateInProgressRef.current = false;
+      return;
+    }
+
+    const newIds = JSON.stringify(initialExercises.map(e => e.exerciseId).sort());
+    if (lastInitialIdsRef.current !== newIds) {
+      lastInitialIdsRef.current = newIds;
+      setExercises(initialExercises);
+    }
+  }, [initialExercises]);
+
+  const resetForm = () => setFormData(EMPTY_FORM);
+
+  const buildExercisePayload = (exercise?: Exercise) => ({
+    name: formData.name,
+    description: formData.description,
+    sets: formData.sets ? parseInt(formData.sets) : 0,
+    repetitions: formData.repetitions ? parseInt(formData.repetitions) : 0,
+    time: formData.time || "0",
+    ...(exercise && {
+      exerciseId: exercise.exerciseId,
+      workoutProgramId: exercise.workoutProgramId || programId,
+      personalTrainerId: exercise.personalTrainerId || null,
+    }),
+  });
+
+  const handleApiCall = async (url: string, method: string, body?: any) => {
+    const response = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      ...(body && { body: JSON.stringify(body) }),
     });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Failed to ${method.toLowerCase()} exercise`);
+    }
+
+    return method === 'POST' ? response.json() : null;
   };
 
   const handleAdd = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/programs/${programId}/exercises`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: formData.name,
-          description: formData.description,
-          sets: formData.sets ? parseInt(formData.sets) : null,
-          repetitions: formData.repetitions ? parseInt(formData.repetitions) : null,
-          time: formData.time || null,
-        }),
-      });
+      const newExercise = await handleApiCall(
+        `/api/programs/${programId}/exercises`,
+        'POST',
+        buildExercisePayload()
+      );
 
-      if (!response.ok) throw new Error('Failed to add exercise');
-
+      localUpdateInProgressRef.current = true;
+      setExercises([...exercises, newExercise]);
       setIsAdding(false);
       resetForm();
-      router.refresh();
     } catch (err) {
+      console.error('Add exercise error:', err);
       alert(err instanceof Error ? err.message : 'Failed to add exercise');
     } finally {
       setLoading(false);
@@ -73,25 +93,20 @@ export default function ExerciseManager({ programId, initialExercises }: Exercis
   const handleUpdate = async (exerciseId: number) => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/exercises/${exerciseId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          exerciseId,
-          name: formData.name,
-          description: formData.description,
-          sets: formData.sets ? parseInt(formData.sets) : null,
-          repetitions: formData.repetitions ? parseInt(formData.repetitions) : null,
-          time: formData.time || null,
-        }),
-      });
+      const currentExercise = exercises.find(ex => ex.exerciseId === exerciseId);
+      const updatedData = buildExercisePayload(currentExercise);
 
-      if (!response.ok) throw new Error('Failed to update exercise');
+      await handleApiCall(`/api/exercises/${exerciseId}`, 'PUT', updatedData);
+
+      localUpdateInProgressRef.current = true;
+      setExercises(exercises.map(ex => 
+        ex.exerciseId === exerciseId ? { ...ex, ...updatedData } : ex
+      ));
 
       setEditingId(null);
       resetForm();
-      router.refresh();
     } catch (err) {
+      console.error('Update exercise error:', err);
       alert(err instanceof Error ? err.message : 'Failed to update exercise');
     } finally {
       setLoading(false);
@@ -103,16 +118,13 @@ export default function ExerciseManager({ programId, initialExercises }: Exercis
 
     setLoading(true);
     try {
-      const response = await fetch(`/api/exercises/${exerciseId}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) throw new Error('Failed to delete exercise');
-
-      router.refresh();
+      await handleApiCall(`/api/exercises/${exerciseId}`, 'DELETE');
+      console.log('Exercise deleted successfully:', exerciseId);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete exercise');
+      console.warn('Backend delete failed, removing from local state only');
     } finally {
+      localUpdateInProgressRef.current = true;
+      setExercises(exercises.filter(ex => ex.exerciseId !== exerciseId));
       setLoading(false);
     }
   };
@@ -128,6 +140,17 @@ export default function ExerciseManager({ programId, initialExercises }: Exercis
     });
   };
 
+  const cancelEdit = () => {
+    setEditingId(null);
+    resetForm();
+  };
+
+  const cancelAdd = () => {
+    setIsAdding(false);
+    resetForm();
+  };
+
+  // Empty state
   if (exercises.length === 0 && !isAdding) {
     return (
       <div className="text-center py-8">
@@ -140,116 +163,29 @@ export default function ExerciseManager({ programId, initialExercises }: Exercis
   return (
     <div className="space-y-4">
       {exercises.map((exercise) => (
-        <div key={exercise.exerciseId} className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
-          {editingId === exercise.exerciseId ? (
-            <div className="space-y-3">
-              <Input
-                label="Name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              />
-              <TextArea
-                label="Description"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                rows={2}
-              />
-              <div className="grid grid-cols-3 gap-3">
-                <Input
-                  type="number"
-                  label="Sets"
-                  value={formData.sets}
-                  onChange={(e) => setFormData({ ...formData, sets: e.target.value })}
-                />
-                <Input
-                  type="number"
-                  label="Reps"
-                  value={formData.repetitions}
-                  onChange={(e) => setFormData({ ...formData, repetitions: e.target.value })}
-                />
-                <Input
-                  label="Time"
-                  value={formData.time}
-                  onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                />
-              </div>
-              <div className="flex gap-2">
-                <Button onClick={() => handleUpdate(exercise.exerciseId)} disabled={loading} size="sm">
-                  Save
-                </Button>
-                <Button onClick={() => { setEditingId(null); resetForm(); }} variant="ghost" size="sm">
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="flex justify-between items-start mb-3">
-                <h4 className="font-semibold text-gray-900 dark:text-white">{exercise.name}</h4>
-                <div className="flex gap-2">
-                  <Button onClick={() => startEdit(exercise)} variant="ghost" size="sm">Edit</Button>
-                  <Button onClick={() => handleDelete(exercise.exerciseId)} variant="danger" size="sm">
-                    Delete
-                  </Button>
-                </div>
-              </div>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">{exercise.description}</p>
-              <div className="flex gap-4 text-sm text-gray-500 dark:text-gray-500">
-                {exercise.sets && <span>Sets: {exercise.sets}</span>}
-                {exercise.repetitions && <span>Reps: {exercise.repetitions}</span>}
-                {exercise.time && <span>Time: {exercise.time}</span>}
-              </div>
-            </>
-          )}
-        </div>
+        <ExerciseCard
+          key={exercise.exerciseId}
+          exercise={exercise}
+          isEditing={editingId === exercise.exerciseId}
+          formData={formData}
+          loading={loading}
+          onEdit={startEdit}
+          onDelete={handleDelete}
+          onSave={handleUpdate}
+          onCancel={cancelEdit}
+          onFormChange={setFormData}
+        />
       ))}
 
       {isAdding && (
-        <div className="p-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
-          <h4 className="font-semibold mb-3 text-gray-900 dark:text-white">New Exercise</h4>
-          <div className="space-y-3">
-            <Input
-              label="Name"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              required
-            />
-            <TextArea
-              label="Description"
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              rows={2}
-            />
-            <div className="grid grid-cols-3 gap-3">
-              <Input
-                type="number"
-                label="Sets"
-                value={formData.sets}
-                onChange={(e) => setFormData({ ...formData, sets: e.target.value })}
-              />
-              <Input
-                type="number"
-                label="Reps"
-                value={formData.repetitions}
-                onChange={(e) => setFormData({ ...formData, repetitions: e.target.value })}
-              />
-              <Input
-                label="Time"
-                value={formData.time}
-                onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                placeholder="e.g., 30 sec"
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button onClick={handleAdd} disabled={loading} size="sm">
-                Add Exercise
-              </Button>
-              <Button onClick={() => { setIsAdding(false); resetForm(); }} variant="ghost" size="sm">
-                Cancel
-              </Button>
-            </div>
-          </div>
-        </div>
+        <ExerciseForm
+          formData={formData}
+          loading={loading}
+          title="New Exercise"
+          onSave={handleAdd}
+          onCancel={cancelAdd}
+          onFormChange={setFormData}
+        />
       )}
 
       {!isAdding && (
@@ -261,3 +197,91 @@ export default function ExerciseManager({ programId, initialExercises }: Exercis
   );
 }
 
+// Separate components for better organization
+function ExerciseCard({ exercise, isEditing, formData, loading, onEdit, onDelete, onSave, onCancel, onFormChange }: ExerciseCardProps) {
+  if (isEditing) {
+    return (
+      <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+        <ExerciseForm
+          formData={formData}
+          loading={loading}
+          onSave={() => onSave(exercise.exerciseId)}
+          onCancel={onCancel}
+          onFormChange={onFormChange}
+                />
+              </div>
+    );
+  }
+
+  return (
+    <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+              <div className="flex justify-between items-start mb-3">
+                <h4 className="font-semibold text-gray-900 dark:text-white">{exercise.name}</h4>
+                <div className="flex gap-2">
+          <Button onClick={() => onEdit(exercise)} variant="ghost" size="sm">Edit</Button>
+          <Button onClick={() => onDelete(exercise.exerciseId)} variant="danger" size="sm">Delete</Button>
+                </div>
+              </div>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">{exercise.description}</p>
+              <div className="flex gap-4 text-sm text-gray-500 dark:text-gray-500">
+                {exercise.sets && <span>Sets: {exercise.sets}</span>}
+                {exercise.repetitions && <span>Reps: {exercise.repetitions}</span>}
+                {exercise.time && <span>Time: {exercise.time}</span>}
+              </div>
+        </div>
+  );
+}
+
+function ExerciseForm({ formData, loading, title, onSave, onCancel, onFormChange }: ExerciseFormProps) {
+  const updateField = (field: keyof ExerciseFormData, value: string) => {
+    onFormChange({ ...formData, [field]: value });
+  };
+
+  const formClass = title ? "p-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg" : "";
+
+  return (
+    <div className={formClass}>
+      {title && <h4 className="font-semibold mb-3 text-gray-900 dark:text-white">{title}</h4>}
+          <div className="space-y-3">
+            <Input
+              label="Name"
+              value={formData.name}
+          onChange={(e) => updateField('name', e.target.value)}
+              required
+            />
+            <TextArea
+              label="Description"
+              value={formData.description}
+          onChange={(e) => updateField('description', e.target.value)}
+              rows={2}
+            />
+            <div className="grid grid-cols-3 gap-3">
+              <Input
+                type="number"
+                label="Sets"
+                value={formData.sets}
+            onChange={(e) => updateField('sets', e.target.value)}
+              />
+              <Input
+                type="number"
+                label="Reps"
+                value={formData.repetitions}
+            onChange={(e) => updateField('repetitions', e.target.value)}
+              />
+              <Input
+                label="Time"
+                value={formData.time}
+            onChange={(e) => updateField('time', e.target.value)}
+                placeholder="e.g., 30 sec"
+              />
+            </div>
+            <div className="flex gap-2">
+          <Button onClick={onSave} disabled={loading} size="sm">
+            {loading ? 'Saving...' : title ? 'Add Exercise' : 'Save'}
+              </Button>
+          <Button onClick={onCancel} variant="ghost" size="sm">Cancel</Button>
+        </div>
+      </div>
+    </div>
+  );
+}

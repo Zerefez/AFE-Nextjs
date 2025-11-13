@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { Input, TextArea, Select } from '@/app/components/Input';
 import { Button } from '@/app/components/Button';
-import { Card, CardHeader, CardTitle, CardContent } from '@/app/components/Card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/Card';
+import { Input, Select, TextArea } from '@/app/components/Input';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 interface Exercise {
   name: string;
@@ -65,17 +65,22 @@ export default function CreateProgramPage() {
     setLoading(true);
 
     try {
-      const payload = {
-        ...formData,
-        clientId: formData.clientId ? parseInt(formData.clientId) : null,
+      const payload: any = {
+        name: formData.name,
+        description: formData.description,
         exercises: exercises.map(ex => ({
           name: ex.name,
           description: ex.description,
-          sets: ex.sets ? parseInt(ex.sets.toString()) : null,
-          repetitions: ex.repetitions ? parseInt(ex.repetitions.toString()) : null,
-          time: ex.time || null,
+          sets: ex.sets ? parseInt(ex.sets.toString()) : 0,
+          repetitions: ex.repetitions ? parseInt(ex.repetitions.toString()) : 0,
+          time: ex.time || "0",
         })),
       };
+
+      // Only include clientId if a client is selected
+      if (formData.clientId) {
+        payload.clientId = parseInt(formData.clientId);
+      }
 
       const response = await fetch('/api/programs', {
         method: 'POST',
@@ -87,13 +92,16 @@ export default function CreateProgramPage() {
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || 'Failed to create program');
+        const errorMsg = data.error || 'Failed to create program';
+        const details = data.details ? ` - ${JSON.stringify(data.details)}` : '';
+        throw new Error(errorMsg + details);
       }
 
       const result = await response.json();
       router.push(`/trainer/programs/${result.workoutProgramId}`);
       router.refresh();
     } catch (err) {
+      console.error('Error creating program:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
@@ -101,7 +109,7 @@ export default function CreateProgramPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
+    <div className="min-h-screen bg-gray-50 dark:bg-black p-4">
       <div className="max-w-4xl mx-auto py-8">
         <div className="mb-6">
           <Link href="/trainer/programs">

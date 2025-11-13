@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Input } from '@/app/components/Input';
 import { Button } from '@/app/components/Button';
-import { Card, CardHeader, CardTitle, CardContent } from '@/app/components/Card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/Card';
+import { Input } from '@/app/components/Input';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 
 export default function CreateClientPage() {
   const router = useRouter();
@@ -47,7 +47,7 @@ export default function CreateClientPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
+    <div className="min-h-screen bg-gray-50 dark:bg-black p-4">
       <div className="max-w-2xl mx-auto py-8">
         <div className="mb-6">
           <Link href="/trainer/dashboard">

@@ -6,7 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/app/components/Card'
 import Link from 'next/link';
 import { Button } from '@/app/components/Button';
 
-export default async function ClientProgramDetailPage({ params }: { params: { id: string } }) {
+export default async function ClientProgramDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
   const token = await getToken();
 
@@ -14,7 +14,8 @@ export default async function ClientProgramDetailPage({ params }: { params: { id
     redirect('/login');
   }
 
-  const programId = parseInt(params.id);
+  const { id } = await params;
+  const programId = parseInt(id);
   const program = await workoutProgramsService.getById(programId, token);
 
   return (

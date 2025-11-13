@@ -13,14 +13,21 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
+    console.log('Creating program with payload:', JSON.stringify(body, null, 2));
+    
     const program = await workoutProgramsService.create(body, token);
 
     return NextResponse.json(program);
   } catch (error: any) {
     console.error('Create program error:', error);
+    console.error('Error details:', error.data || error);
+    
     return NextResponse.json(
-      { error: error.message || 'Failed to create program' },
-      { status: 400 }
+      { 
+        error: error.message || 'Failed to create program',
+        details: error.data || undefined
+      },
+      { status: error.status || 400 }
     );
   }
 }

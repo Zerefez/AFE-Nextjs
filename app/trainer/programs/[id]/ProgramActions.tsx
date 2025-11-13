@@ -1,17 +1,12 @@
 "use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Button } from '@/app/components/Button';
-import { Input, TextArea, Select } from '@/app/components/Input';
+import { Input, Select, TextArea } from '@/app/components/Input';
+import type { ProgramActionsProps } from '@/lib/types/programs';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 
-interface ProgramActionsProps {
-  programId: number;
-  program: any;
-  clients: any[];
-}
-
-export default function ProgramActions({ programId, program, clients }: ProgramActionsProps) {
+export default function ProgramActions({ programId, program, clients, onUpdate }: ProgramActionsProps) {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
@@ -43,8 +38,20 @@ export default function ProgramActions({ programId, program, clients }: ProgramA
         throw new Error('Failed to update program');
       }
 
+      // Update the parent component's state
+      const updatedProgram = {
+        ...program,
+        name: formData.name,
+        description: formData.description,
+        clientId: formData.clientId ? parseInt(formData.clientId) : null,
+      };
+      
+      if (onUpdate) {
+        onUpdate(updatedProgram);
+      }
+
       setIsEditing(false);
-      router.refresh();
+      // Don't call router.refresh() to avoid resetting exercises state
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Update failed');
     } finally {

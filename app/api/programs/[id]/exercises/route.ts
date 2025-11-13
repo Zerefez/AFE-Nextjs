@@ -4,7 +4,7 @@ import { exercisesService } from '@/lib/services/exercises';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const token = await getToken();
@@ -13,7 +13,8 @@ export async function POST(
     }
 
     const body = await request.json();
-    const programId = parseInt(params.id);
+    const { id } = await params;
+    const programId = parseInt(id);
 
     const exercise = await exercisesService.addToProgram(programId, body, token);
 
